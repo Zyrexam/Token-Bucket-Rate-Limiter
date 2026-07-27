@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Maven Wrapper ###
+.mvn/
+mvnw
+mvnw.cmd
+
+### Misc ###
+.gitattributes
+test.ps1
