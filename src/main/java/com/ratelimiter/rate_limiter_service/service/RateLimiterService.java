@@ -6,7 +6,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import jakarta.annotation.PostConstruct;
@@ -71,9 +70,9 @@ public class RateLimiterService {
 
             return new RateLimitResponse(allowed, remaining, capacity, retryAfter);
 
-        } catch (RedisConnectionFailureException e) {
-            log.error("Redis connection failed for client '{}'", clientId, e);
-
+        } catch (Exception e) {
+            // catches RedisConnectionFailureException, RedisCommandTimeoutException (wrapped in RedisSystemException), etc.
+            log.error("Redis failure for client '{}' ({}): {}", clientId, e.getClass().getSimpleName(), e.getMessage(), e);
             if (properties.isFailOpen()) {
                 log.warn("Fail-open enabled: allowing request for client '{}'", clientId);
                 return new RateLimitResponse(true, capacity, capacity, 0);
