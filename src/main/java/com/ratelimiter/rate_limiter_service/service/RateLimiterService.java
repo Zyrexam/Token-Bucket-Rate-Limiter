@@ -9,10 +9,12 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import com.ratelimiter.rate_limiter_service.config.RateLimiterProperties;
 import com.ratelimiter.rate_limiter_service.model.RateLimitResponse;
+
 
 @Service
 public class RateLimiterService {
@@ -29,7 +31,11 @@ public class RateLimiterService {
         this.properties = properties;
     }
 
-    @SuppressWarnings("unchecked")
+    @PostConstruct
+    public void init() {
+        script();     }
+
+
     private DefaultRedisScript<List<Object>> script() {
         if (rateLimitScript != null) return rateLimitScript;
         rateLimitScript = new DefaultRedisScript<>();
@@ -38,16 +44,20 @@ public class RateLimiterService {
         return rateLimitScript;
     }
 
-    public RateLimitResponse evaluate(String clientId) {
-        RateLimiterProperties.ClientConfig config = properties.resolveForClient(clientId);
+
+    public RateLimitResponse evaluate(String clientId, String endPoint) {
+
+        RateLimiterProperties.EndpointConfig config = properties.resolveForClientAndEndpoint(clientId, endPoint);
         int capacity = config.getCapacity();
         double refillRate = config.getRefillRate();
         long nowMillis = Instant.now().toEpochMilli();
 
-        String redisKey = "bucket:" + clientId;
+
+        String normalizedEndpoint = properties.normalizeEndpoint(endPoint);
+        String redisKey = "bucket:" + clientId + ":" + normalizedEndpoint;
 
         try {
-            List<Object>  result = redisTemplate.execute(
+            List<Object> result = redisTemplate.execute(
                     script(),
                     List.of(redisKey),
                     String.valueOf(refillRate),

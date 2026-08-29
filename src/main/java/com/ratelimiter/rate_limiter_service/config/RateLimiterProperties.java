@@ -2,80 +2,70 @@ package com.ratelimiter.rate_limiter_service.config;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import lombok.Data;
+
+@Data
 @ConfigurationProperties(prefix = "rate-limiter")
 public class RateLimiterProperties {
 
     private int defaultCapacity = 10;
     private double defaultRefillRate = 2.0;
     private boolean failOpen = true;
-    private Map<String, ClientConfig> clients = new HashMap<>();
 
-    // --- Getters and Setters ---
+    // ponytail: ConcurrentHashMap for thread-safe binding, HashMap would also work as Spring binds single-threaded
+    private Map<String, ClientConfig> clients = new ConcurrentHashMap<>();
 
-    public int getDefaultCapacity() {
-        return defaultCapacity;
-    }
 
-    public void setDefaultCapacity(int defaultCapacity) {
-        this.defaultCapacity = defaultCapacity;
-    }
+    // Priority: endpoint-specific > client-level > global defaults
 
-    public double getDefaultRefillRate() {
-        return defaultRefillRate;
-    }
+    public EndpointConfig resolveForClientAndEndpoint(String clientId, String endpoint) {
+        String normalizedEndpoint = normalizeEndpoint(endpoint);
+        ClientConfig clientConfig = clients.get(clientId);
 
-    public void setDefaultRefillRate(double defaultRefillRate) {
-        this.defaultRefillRate = defaultRefillRate;
-    }
-
-    public boolean isFailOpen() {
-        return failOpen;
-    }
-
-    public void setFailOpen(boolean failOpen) {
-        this.failOpen = failOpen;
-    }
-
-    public Map<String, ClientConfig> getClients() {
-        return clients;
-    }
-
-    public void setClients(Map<String, ClientConfig> clients) {
-        this.clients = clients;
-    }
-
-    public ClientConfig resolveForClient(String clientId) {
-        ClientConfig config = clients.get(clientId);
-        if (config != null) {
-            return config;
+        // 1. Endpoint-specific config (highest priority)
+        if (clientConfig != null) {
+            EndpointConfig epConfig = clientConfig.getEndpoints().get(normalizedEndpoint);
+            if (epConfig != null && epConfig.getCapacity() > 0 && epConfig.getRefillRate() > 0) {
+                return epConfig;
+            }
         }
-        // zero capacity/rate are accepted as explicit config, no fallback
-        ClientConfig defaults = new ClientConfig();
-        defaults.setCapacity(defaultCapacity);
-        defaults.setRefillRate(defaultRefillRate);
-        return defaults;
+
+        // 2. Client-level defaults
+        if (clientConfig != null && clientConfig.getCapacity() != null && clientConfig.getRefillRate() != null) {
+            return new EndpointConfig(clientConfig.getCapacity(), clientConfig.getRefillRate());
+        }
+
+        // 3. Global defaults
+        return new EndpointConfig(defaultCapacity, defaultRefillRate);
     }
 
+    public String normalizeEndpoint(String endpoint) {
+        if (endpoint != null && endpoint.startsWith("/")) {
+            return endpoint.substring(1);
+        }
+        return endpoint;
+    }
+
+    @Data
     public static class ClientConfig {
+        private Integer capacity;
+        private Double refillRate;
+        private Map<String, EndpointConfig> endpoints = new HashMap<>();
+    }
+
+    @Data
+    public static class EndpointConfig {
         private int capacity;
         private double refillRate;
 
-        public int getCapacity() {
-            return capacity;
-        }
+        public EndpointConfig() {}
 
-        public void setCapacity(int capacity) {
+        public EndpointConfig(int capacity, double refillRate) {
             this.capacity = capacity;
-        }
-
-        public double getRefillRate() {
-            return refillRate;
-        }
-
-        public void setRefillRate(double refillRate) {
             this.refillRate = refillRate;
         }
     }
